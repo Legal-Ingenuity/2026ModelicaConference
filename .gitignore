@@ -1,0 +1,31 @@
+# === Build output ===
+/cmake-build-debug/
+/compile_commands.json
+*.o
+*.so
+
+# === User-created during install (see the install guide) ===
+# Users clone Qiskit and build it themselves; never commit the clone or the venv.
+/qiskit/
+/.venv/
+
+# === Local recovery bundles / working artifacts (regenerable) ===
+/archives/
+/snapshots/
+/ARCHIVE/
+/ClaudeCodeConversation/
+/draw_render/
+/draw_xcheck/
+/qasm_xcheck/
+
+# === Editor / IDE ===
+/.idea/
+
+# === LaTeX auxiliary files ===
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz

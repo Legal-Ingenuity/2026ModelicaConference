@@ -1,0 +1,5 @@
+// run_knapsack.mos — load + simulate the quantum knapsack model end-to-end.
+// Usage (from the project root):
+//   LD_LIBRARY_PATH=qiskit/dist/c/lib omc run_knapsack.mos
+loadFile("ModKnapsack.mo");           getErrorString();
+simulate(ModKnapsack.KnapsackRun, stopTime = 0.0); getErrorString();
