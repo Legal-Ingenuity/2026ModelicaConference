@@ -3,11 +3,24 @@
 /compile_commands.json
 *.o
 *.so
+*.a
+/Resources/Library/
 
 # === User-created during install (see the install guide) ===
 # Users clone Qiskit and build it themselves; never commit the clone or the venv.
 /qiskit/
 /.venv/
+
+# === Files a solver run writes into its working directory (knapsack.c) ===
+/groverStats.txt
+/printCircuitFile.txt
+/circuitText.txt
+/circuitSchematic.tex
+/circuitFigure*.qasm
+/solverCircuit.qasm
+/solverCircuit.meta
+/aer_results.json
+/qpu_results.json
 
 # === Local recovery bundles / working artifacts (regenerable) ===
 /archives/

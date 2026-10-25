@@ -7,8 +7,9 @@
  *   ModCallKnapsack   function  external "C" wrapper around callKnapsack()
  *   KnapsackRun       model     select a case, set MaxCost / SolverPath, simulate with stopTime = 0
  *
- * Run:  export LD_LIBRARY_PATH=<version root>/qiskit/dist/c/lib:$LD_LIBRARY_PATH
- *       loadFile("ModKnapsack.mo"); simulate(ModKnapsack.KnapsackRun, stopTime=0);
+ * Build: cmake (README.md) puts libknapsack.a and libqiskit.a in Resources/Library/linux64.
+ * Run:  loadFile("ModKnapsack.mo"); simulate(ModKnapsack.KnapsackRun, stopTime=0);
+ *       or, in Modelon Impact, simulate ModKnapsack.KnapsackRun with start = stop = 0.
  *       Another case: model Run extends ModKnapsack.KnapsackRun(tc=ModKnapsack.TestCases.TC3_N5, MaxCost=4); end Run;
  *
  * Disclaimer: During the preparation of this work the author used Anthropic's Claude (via Claude Code)
@@ -61,7 +62,10 @@ package ModKnapsack "Quantum 0/1 Knapsack Solver via the Qiskit C API"
   // outputs by value if the C return value is also mapped; the all-pointer form avoids that).
   //   Kind: 0 = exact distribution of the final circuit (path 0); 1 = verification shots (paths 1/2).
   //   PSubset[s+1] = P(subset with bitmask s), bit i set = item i chosen.
-  function ModCallKnapsack "Calls callKnapsack() in knapsack/knapsack.c"
+  // Linked from Resources/Library/linux64 (libknapsack.a + libqiskit.a, built by CMake), not
+  // #included: the same annotation works in OpenModelica and in Modelon Impact. Impure: the
+  // search is randomized and writes files.
+  impure function ModCallKnapsack "Calls callKnapsack() in knapsack/knapsack.c"
     input  Integer Npatents "Number of items (1..Nmax, Nmax = 7)";
     input  Real    Values[Npatents];
     input  Real    Costs[Npatents];
@@ -78,15 +82,14 @@ package ModKnapsack "Quantum 0/1 Knapsack Solver via the Qiskit C API"
     external "C" callKnapsack(Npatents, Values, Costs, MaxCost, PatentIndices, ExStatus, QDrawDetail, SolverPath,
                               NStates, PSubset, OracleCalls, Shots, Kind)
       annotation(
-        Include = "#include \"../../../../knapsack/knapsack.c\"",
-        IncludeDirectory = "modelica://ModKnapsack/qiskit/dist/c/include",
-        Library = {"qiskit", "m"},
-        LibraryDirectory = "modelica://ModKnapsack/qiskit/dist/c/lib");
+        Library = {"knapsack", "qiskit", "m"},
+        LibraryDirectory = "modelica://ModKnapsack/Resources/Library");
   end ModCallKnapsack;
 
   // KnapsackRun — pick a case, optionally override MaxCost / SolverPath, simulate with stopTime = 0.
   // Npatents, Values, Costs come from the selected case; MaxCost, QDrawDetail, SolverPath are inputs.
   model KnapsackRun "Run the quantum knapsack solver on a library test case"
+    import Modelica.Utilities.Streams;
     parameter TestCase tc = TestCases.Golden_N4 "Test case (pick from the list)"
       annotation(choices(
         choice=ModKnapsack.TestCases.Golden_N4 "Golden N=4 (install gate)",
@@ -170,6 +173,15 @@ package ModKnapsack "Quantum 0/1 Knapsack Solver via the Qiskit C API"
       end for;
     end topK;
 
+    function listOf "the entries of an Integer vector, comma separated, e.g. 1, 0, 1, 0"
+      input Integer x[:]; output String str;
+    algorithm
+      str := "";
+      for i in 1:size(x,1) loop
+        str := str + (if i > 1 then ", " else "") + String(x[i]);
+      end for;
+    end listOf;
+
     function statusText
       input Integer ExStatus; output String str;
     algorithm
@@ -201,42 +213,46 @@ package ModKnapsack "Quantum 0/1 Knapsack Solver via the Qiskit C API"
       BestMask := maskOf(PatentIndices);
       PSuccess := PSubset[BestMask + 1];
 
-      print("\n=== ModKnapsack: " + tc.Name + " ===\n");
-      print("  N = " + String(Npatents) + "    W = " + String(MaxCost) + "    SolverPath = " + String(SolverPath)
-            + " (" + pathText(SolverPath) + ")    QDrawDetail = " + String(QDrawDetail) + "\n\n");
-      print("  Item   Cost   Value   Selected\n");
+      // Each line whole: Modelica.Utilities.Streams.print ends every call with a newline.
+      Streams.print("");
+      Streams.print("=== ModKnapsack: " + tc.Name + " ===");
+      Streams.print("  N = " + String(Npatents) + "    W = " + String(MaxCost) + "    SolverPath = " + String(SolverPath)
+            + " (" + pathText(SolverPath) + ")    QDrawDetail = " + String(QDrawDetail));
+      Streams.print("");
+      Streams.print("  Item   Cost   Value   Selected");
       for i in 1:Npatents loop
-        print(String(i-1, minimumLength=6, leftJustified=false) + String(integer(Costs[i]), minimumLength=7, leftJustified=false)
-              + String(integer(Values[i]), minimumLength=8, leftJustified=false) + "   " + (if PatentIndices[i] == 1 then "yes" else ".") + "\n");
+        Streams.print(String(i-1, minimumLength=6, leftJustified=false) + String(integer(Costs[i]), minimumLength=7, leftJustified=false)
+              + String(integer(Values[i]), minimumLength=8, leftJustified=false) + "   " + (if PatentIndices[i] == 1 then "yes" else "."));
       end for;
-      print("\n  Result: ExStatus " + String(ExStatus) + " (" + statusText(ExStatus) + ")");
-      if ExStatus == 0 or ExStatus == 1 then
-        print("   subset " + itemsOf(BestMask, Npatents) + "   cost " + String(integer(ActualCost)) + " of " + String(MaxCost)
-              + "   value " + String(integer(ActualValue)));
-      end if;
-      print("\n");
+      Streams.print("");
+      Streams.print("  Result: ExStatus " + String(ExStatus) + " (" + statusText(ExStatus) + ")"
+            + (if ExStatus == 0 or ExStatus == 1 then
+                 "   subset " + itemsOf(BestMask, Npatents) + "   cost " + String(integer(ActualCost)) + " of " + String(MaxCost)
+                 + "   value " + String(integer(ActualValue))
+               else ""));
       if Kind == 0 then
-        print("  Search: " + String(OracleCalls) + " oracle calls   (Kind 0 = exact distribution of the final circuit)\n");
+        Streams.print("  Search: " + String(OracleCalls) + " oracle calls   (Kind 0 = exact distribution of the final circuit)");
       else
-        print("  Shots:  " + String(Shots) + "   (Kind 1 = verification run on " + pathText(SolverPath) + ")\n");
+        Streams.print("  Shots:  " + String(Shots) + "   (Kind 1 = verification run on " + pathText(SolverPath) + ")");
       end if;
       // the three lines the install gate reads
-      print("  ExStatus      = " + String(ExStatus) + "\n");
-      print("  PatentIndices = [" + String(PatentIndices[1]));
-      for i in 2:Npatents loop print(", " + String(PatentIndices[i])); end for;
-      print("]\n  ActualCost    = " + String(ActualCost) + "   ActualValue = " + String(ActualValue) + "\n");
+      Streams.print("  ExStatus      = " + String(ExStatus));
+      Streams.print("  PatentIndices = [" + listOf(PatentIndices) + "]");
+      Streams.print("  ActualCost    = " + String(ActualCost) + "   ActualValue = " + String(ActualValue));
       if ExStatus == 0 or ExStatus == 1 then
-        print("\n  Subset distribution (top " + String(K) + " of " + String(NStates) + ", P descending)\n");
-        print("  mask   cost  value  fits        P   items\n");
+        Streams.print("");
+        Streams.print("  Subset distribution (top " + String(K) + " of " + String(NStates) + ", P descending)");
+        Streams.print("  mask   cost  value  fits        P   items");
         top := topK(PSubset, K);
         for r in 1:K loop
-          print(String(top[r]-1, minimumLength=6, leftJustified=false) + String(integer(sumOf(top[r]-1, Costs)), minimumLength=7, leftJustified=false) + String(integer(sumOf(top[r]-1, Values)), minimumLength=7, leftJustified=false)
+          Streams.print(String(top[r]-1, minimumLength=6, leftJustified=false) + String(integer(sumOf(top[r]-1, Costs)), minimumLength=7, leftJustified=false) + String(integer(sumOf(top[r]-1, Values)), minimumLength=7, leftJustified=false)
                 + "   " + (if sumOf(top[r]-1, Costs) <= MaxCost then "yes" else "no ") + String(PSubset[top[r]], significantDigits=4, minimumLength=9, leftJustified=false)
-                + "   " + itemsOf(top[r]-1, Npatents) + "\n");
+                + "   " + itemsOf(top[r]-1, Npatents));
         end for;
-        print("  chance 1/" + String(NStates) + " = " + String(Chance, significantDigits=4) + "   P(returned subset) = " + String(PSuccess, significantDigits=4) + "\n");
+        Streams.print("  chance 1/" + String(NStates) + " = " + String(Chance, significantDigits=4) + "   P(returned subset) = " + String(PSuccess, significantDigits=4));
       end if;
     end when;
   end KnapsackRun;
 
+  annotation(uses(Modelica(version = "4.1.0")));
 end ModKnapsack;

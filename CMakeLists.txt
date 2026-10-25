@@ -15,7 +15,7 @@ find_library(QISKIT_LIB
     REQUIRED
 )
 
-# ── knapsack shared library (loaded by OpenModelica at runtime) ─────────────
+# ── knapsack shared library (for linking from other C programs) ─────────────
 add_library(knapsack SHARED knapsack/knapsack.c)
 
 target_include_directories(knapsack PRIVATE "${QISKIT_INCLUDE_DIR}")
@@ -27,9 +27,41 @@ set_target_properties(knapsack PROPERTIES
     INSTALL_RPATH "${QISKIT_LIB_DIR}"
 )
 
+# ── static libraries for the Modelica tools (OpenModelica, Modelon Impact) ──
+# ModKnapsack.mo links callKnapsack() with Library = {"knapsack", "qiskit", "m"} and
+# LibraryDirectory = "modelica://ModKnapsack/Resources/Library"; both tools look in its linux64/
+# subfolder. knapsack.c is compiled here, as C11: Modelon Impact compiles the model's generated
+# C as C89, so the model cannot #include the C11 source the way OpenModelica can. Static, so a
+# run needs no LD_LIBRARY_PATH: an Impact FMU finds shared libraries only next to itself.
+set(MODELICA_LIB_DIR "${CMAKE_SOURCE_DIR}/Resources/Library/linux64")
+
+add_library(knapsack_static STATIC knapsack/knapsack.c)
+
+target_include_directories(knapsack_static PRIVATE "${QISKIT_INCLUDE_DIR}")
+
+set_target_properties(knapsack_static PROPERTIES
+    OUTPUT_NAME              knapsack
+    POSITION_INDEPENDENT_CODE ON
+    ARCHIVE_OUTPUT_DIRECTORY "${MODELICA_LIB_DIR}"
+)
+
+# libqiskit.a beside it: `make c` builds only libqiskit.so, the static library is one more
+# cargo step (README.md, "Build and test").
+find_file(QISKIT_STATIC_LIB libqiskit.a PATHS "${QISKIT_LIB_DIR}" NO_DEFAULT_PATH)
+if(QISKIT_STATIC_LIB)
+    add_custom_target(qiskit_static ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${MODELICA_LIB_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${QISKIT_STATIC_LIB}" "${MODELICA_LIB_DIR}/libqiskit.a"
+        COMMENT "Copying libqiskit.a to Resources/Library/linux64"
+    )
+else()
+    message(WARNING "qiskit/dist/c/lib/libqiskit.a not found: the Modelica model will not link. "
+                    "Build it as README.md describes, then rerun CMake.")
+endif()
+
 # ── knapsack_test executable (standalone C test harness) ────────────────────
 # main.c forward-declares callKnapsack(); knapsack.c provides the definition.
-# OpenModelica never sees main.c — it #includes knapsack.c directly.
+# The Modelica tools never see main.c — they link libknapsack.a (above).
 add_executable(knapsack_test knapsack/main.c knapsack/knapsack.c)
 
 target_include_directories(knapsack_test PRIVATE "${QISKIT_INCLUDE_DIR}")
@@ -43,7 +75,7 @@ set_target_properties(knapsack_test PROPERTIES
 # ── gate_test executable (white-box simulator gate tests) ───────────
 # gate_test.c #includes knapsack.c directly (white-box access to static sv_*),
 # so knapsack.c is NOT listed as a separate source here — that would double-
-# define every symbol. This mirrors OpenModelica's own #include of knapsack.c.
+# define every symbol.
 add_executable(gate_test knapsack/gate_test.c)
 
 target_include_directories(gate_test PRIVATE "${QISKIT_INCLUDE_DIR}")

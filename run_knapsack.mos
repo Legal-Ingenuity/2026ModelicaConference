@@ -1,5 +1,6 @@
 // run_knapsack.mos — load + simulate the quantum knapsack model end-to-end.
 // Usage (from the project root):
-//   LD_LIBRARY_PATH=qiskit/dist/c/lib omc run_knapsack.mos
+//   omc run_knapsack.mos      (after the CMake build, README.md: no LD_LIBRARY_PATH needed)
+loadModel(Modelica, {"4.1.0"});      getErrorString();
 loadFile("ModKnapsack.mo");           getErrorString();
 simulate(ModKnapsack.KnapsackRun, stopTime = 0.0); getErrorString();
